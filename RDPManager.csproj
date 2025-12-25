@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProjectGuid>{8A9C8F5D-1234-4567-89AB-CDEF01234567}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>RDPManager</RootNamespace>
+    <AssemblyName>RDPManager</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>7.3</LangVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\x86\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\x86\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="MSTSCLib">
+      <HintPath>MSTSCLib.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="AxMSTSCLib">
+      <HintPath>AxMSTSCLib.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="EditConnectionForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="EditConnectionForm.Designer.cs">
+      <DependentUpon>EditConnectionForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="RdpSessionForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="RdpPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="RdpTabForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Models\RdpConnection.cs" />
+    <Compile Include="Models\ConnectionFolder.cs" />
+    <Compile Include="MainFormNew.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Utils\DataManager.cs" />
+    <Compile Include="Utils\EncryptionHelper.cs" />
+    <Compile Include="Utils\RdpHelper.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="packages.config" />
+    <None Include="app.manifest" />
+  </ItemGroup>
+
+  <!-- 应用程序清单设置 -->
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

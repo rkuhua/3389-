@@ -1,0 +1,66 @@
+# Visual Studio
+.vs/
+
+# Claude Code
+.claude/
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Publish folder
+publish/
+
+# Keep COM Interop DLLs (required for build)
+!MSTSCLib.dll
+!AxMSTSCLib.dll
+
+# ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Mac
+.DS_Store
+
+# Backup files
+*.bak
+*.backup
+*~
+*.swp
+
+# NuGet executable
+nuget.exe
+
+# Temp folder
+nul

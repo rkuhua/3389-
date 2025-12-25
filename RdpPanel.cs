@@ -1,0 +1,386 @@
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using AxMSTSCLib;
+using MSTSCLib;
+using RDPManager.Models;
+
+namespace RDPManager
+{
+    /// <summary>
+    /// RDP 连接面板 - 用于嵌入到标签页中
+    /// </summary>
+    public class RdpPanel : Panel
+    {
+        private AxMsRdpClient9NotSafeForScripting rdpClient;
+        private readonly RdpConnection _connection;
+        private readonly string _password;
+
+        public event EventHandler<string> StatusChanged;
+        public event EventHandler ConnectionClosed;
+        public event EventHandler<int> Disconnected;
+
+        public string ConnectionName { get { return _connection.Name; } }
+        public bool IsConnected { get { return rdpClient != null && rdpClient.Connected == 1; } }
+
+        public RdpPanel(RdpConnection connection, string password)
+        {
+            _connection = connection;
+            _password = password;
+            this.Dock = DockStyle.Fill;
+        }
+
+        public void Connect()
+        {
+            try
+            {
+                // 创建 RDP 控件
+                rdpClient = new AxMsRdpClient9NotSafeForScripting();
+                ((System.ComponentModel.ISupportInitialize)(rdpClient)).BeginInit();
+
+                rdpClient.Dock = DockStyle.Fill;
+                rdpClient.Name = "rdpClient";
+                rdpClient.Enabled = true;
+
+                this.Controls.Add(rdpClient);
+                ((System.ComponentModel.ISupportInitialize)(rdpClient)).EndInit();
+
+                // 配置连接参数
+                rdpClient.Server = _connection.ServerAddress;
+                rdpClient.AdvancedSettings9.RDPPort = _connection.Port;
+                rdpClient.UserName = _connection.Username;
+
+                // 设置密码
+                if (!string.IsNullOrEmpty(_password))
+                {
+                    rdpClient.AdvancedSettings9.ClearTextPassword = _password;
+                }
+
+                // 禁用凭据提示 - 安全设置
+                rdpClient.AdvancedSettings9.EnableCredSspSupport = true;
+                rdpClient.AdvancedSettings9.AuthenticationLevel = 2; // 如果认证失败则不连接
+                rdpClient.AdvancedSettings9.NegotiateSecurityLayer = true;
+
+                // 网络级别身份验证 (NLA)
+                try
+                {
+                    // 尝试设置 NLA（某些版本可能不支持）
+                    ((IMsRdpClientNonScriptable3)rdpClient.GetOcx()).EnableCredSspSupport = true;
+                }
+                catch { /* 忽略不支持的版本 */ }
+
+                // 分辨率设置
+                int desktopWidth, desktopHeight;
+
+                // 获取主屏幕的真实物理分辨率
+                int physicalWidth = GetPhysicalScreenWidth();
+                int physicalHeight = GetPhysicalScreenHeight();
+
+                if (_connection.AutoFitResolution)
+                {
+                    // 自动适应：使用控件当前大小（如果有效）或屏幕分辨率
+                    if (this.Width > 100 && this.Height > 100)
+                    {
+                        desktopWidth = this.Width;
+                        desktopHeight = this.Height;
+                    }
+                    else
+                    {
+                        desktopWidth = physicalWidth > 0 ? physicalWidth : 1920;
+                        desktopHeight = physicalHeight > 0 ? physicalHeight : 1080;
+                    }
+                }
+                else if (_connection.IsFullScreen)
+                {
+                    // 全屏模式
+                    desktopWidth = physicalWidth > 0 ? physicalWidth : 1920;
+                    desktopHeight = physicalHeight > 0 ? physicalHeight : 1080;
+                }
+                else
+                {
+                    // 自定义分辨率
+                    desktopWidth = _connection.Width > 0 ? _connection.Width : 1920;
+                    desktopHeight = _connection.Height > 0 ? _connection.Height : 1080;
+                }
+
+                // 确保分辨率在合理范围内（RDP 支持的最大分辨率）
+                desktopWidth = Math.Max(800, Math.Min(desktopWidth, 4096));
+                desktopHeight = Math.Max(600, Math.Min(desktopHeight, 2160));
+
+                // 确保分辨率是偶数（某些显卡要求）
+                desktopWidth = desktopWidth - (desktopWidth % 2);
+                desktopHeight = desktopHeight - (desktopHeight % 2);
+
+                rdpClient.DesktopWidth = desktopWidth;
+                rdpClient.DesktopHeight = desktopHeight;
+
+                // 颜色深度
+                rdpClient.ColorDepth = _connection.ColorDepth;
+
+                // 性能和显示优化
+                rdpClient.AdvancedSettings9.EnableAutoReconnect = true;
+                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 5;
+                rdpClient.AdvancedSettings9.Compress = 1;
+                rdpClient.AdvancedSettings9.BitmapPeristence = 1;
+
+                // 启用智能缩放 - 让远程桌面自适应控件大小
+                // 由于我们设置的分辨率与窗口大小匹配，所以不会模糊
+                rdpClient.AdvancedSettings9.SmartSizing = true;
+
+                // 提高显示质量的设置
+                rdpClient.AdvancedSettings9.PerformanceFlags = 0; // 启用所有视觉效果
+                rdpClient.AdvancedSettings9.RedirectDrives = false;
+                rdpClient.AdvancedSettings9.RedirectPrinters = false;
+                rdpClient.AdvancedSettings9.RedirectPorts = false;
+                rdpClient.AdvancedSettings9.RedirectSmartCards = false;
+
+                // 提高图像质量
+                rdpClient.AdvancedSettings9.DisableCtrlAltDel = 1;
+                rdpClient.AdvancedSettings9.EnableWindowsKey = 1;
+                rdpClient.AdvancedSettings9.GrabFocusOnConnect = true;
+
+                // 显示连接栏（全屏时）
+                rdpClient.AdvancedSettings9.DisplayConnectionBar = true;
+                rdpClient.AdvancedSettings9.PinConnectionBar = false;
+
+                // 连接事件
+                rdpClient.OnConnected += RdpClient_OnConnected;
+                rdpClient.OnDisconnected += RdpClient_OnDisconnected;
+                rdpClient.OnFatalError += RdpClient_OnFatalError;
+                rdpClient.OnLoginComplete += RdpClient_OnLoginComplete;
+
+                // 开始连接
+                OnStatusChanged("正在连接...");
+                rdpClient.Connect();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(string.Format("初始化 RDP 连接失败: {0}", ex.Message), "错误",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                OnConnectionClosed();
+            }
+        }
+
+        public void Disconnect()
+        {
+            try
+            {
+                if (rdpClient != null && rdpClient.Connected == 1)
+                {
+                    rdpClient.Disconnect();
+                }
+            }
+            catch
+            {
+                // 忽略断开连接时的错误
+            }
+        }
+
+        /// <summary>
+        /// 适应窗口大小
+        /// </summary>
+        public void FitToWindow()
+        {
+            if (this.Width > 0 && this.Height > 0)
+            {
+                ChangeResolution(this.Width, this.Height);
+            }
+        }
+
+        /// <summary>
+        /// 设置分辨率
+        /// </summary>
+        public void SetResolution(int width, int height)
+        {
+            ChangeResolution(width, height);
+        }
+
+        /// <summary>
+        /// 动态调整远程桌面分辨率
+        /// 注意：RDP客户端不支持运行时直接调整分辨率，需要重新创建控件并连接
+        /// </summary>
+        /// <param name="width">宽度</param>
+        /// <param name="height">高度</param>
+        /// <returns>是否成功</returns>
+        public bool ChangeResolution(int width, int height)
+        {
+            try
+            {
+                if (rdpClient == null || rdpClient.Connected != 1)
+                {
+                    return false;
+                }
+
+                OnStatusChanged("正在调整分辨率...");
+
+                // 断开当前连接
+                rdpClient.Disconnect();
+
+                // 等待断开完成
+                System.Threading.Thread.Sleep(300);
+
+                // 移除旧控件
+                this.Controls.Remove(rdpClient);
+                rdpClient.Dispose();
+                rdpClient = null;
+
+                // 创建新的 RDP 控件
+                rdpClient = new AxMsRdpClient9NotSafeForScripting();
+                ((System.ComponentModel.ISupportInitialize)(rdpClient)).BeginInit();
+                rdpClient.Dock = DockStyle.Fill;
+                rdpClient.Name = "rdpClient";
+                rdpClient.Enabled = true;
+                this.Controls.Add(rdpClient);
+                ((System.ComponentModel.ISupportInitialize)(rdpClient)).EndInit();
+
+                // 配置连接参数
+                rdpClient.Server = _connection.ServerAddress;
+                rdpClient.AdvancedSettings9.RDPPort = _connection.Port;
+                rdpClient.UserName = _connection.Username;
+
+                if (!string.IsNullOrEmpty(_password))
+                {
+                    rdpClient.AdvancedSettings9.ClearTextPassword = _password;
+                }
+
+                rdpClient.AdvancedSettings9.EnableCredSspSupport = true;
+                rdpClient.AdvancedSettings9.AuthenticationLevel = 0;
+                rdpClient.AdvancedSettings9.NegotiateSecurityLayer = true;
+
+                // 使用新的分辨率
+                rdpClient.DesktopWidth = width;
+                rdpClient.DesktopHeight = height;
+                rdpClient.ColorDepth = _connection.ColorDepth;
+
+                // 性能设置
+                rdpClient.AdvancedSettings9.EnableAutoReconnect = true;
+                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 5;
+                rdpClient.AdvancedSettings9.Compress = 1;
+                rdpClient.AdvancedSettings9.BitmapPeristence = 1;
+                rdpClient.AdvancedSettings9.SmartSizing = true; // 启用智能缩放
+                rdpClient.AdvancedSettings9.PerformanceFlags = 0;
+                rdpClient.AdvancedSettings9.RedirectDrives = false;
+                rdpClient.AdvancedSettings9.RedirectPrinters = false;
+                rdpClient.AdvancedSettings9.RedirectPorts = false;
+                rdpClient.AdvancedSettings9.RedirectSmartCards = false;
+                rdpClient.AdvancedSettings9.DisableCtrlAltDel = 1;
+                rdpClient.AdvancedSettings9.EnableWindowsKey = 1;
+                rdpClient.AdvancedSettings9.GrabFocusOnConnect = true;
+                rdpClient.AdvancedSettings9.DisplayConnectionBar = true;
+                rdpClient.AdvancedSettings9.PinConnectionBar = false;
+
+                // 重新绑定事件
+                rdpClient.OnConnected += RdpClient_OnConnected;
+                rdpClient.OnDisconnected += RdpClient_OnDisconnected;
+                rdpClient.OnFatalError += RdpClient_OnFatalError;
+                rdpClient.OnLoginComplete += RdpClient_OnLoginComplete;
+
+                // 重新连接
+                rdpClient.Connect();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(string.Format("调整分辨率失败: {0}", ex.Message), "错误",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+        }
+
+        private void RdpClient_OnConnected(object sender, EventArgs e)
+        {
+            OnStatusChanged("已连接");
+        }
+
+        private void RdpClient_OnLoginComplete(object sender, EventArgs e)
+        {
+            OnStatusChanged("登录成功");
+        }
+
+        private void RdpClient_OnDisconnected(object sender, IMsTscAxEvents_OnDisconnectedEvent e)
+        {
+            if (Disconnected != null)
+            {
+                Disconnected(this, e.discReason);
+            }
+            OnConnectionClosed();
+        }
+
+        private void RdpClient_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
+        {
+            MessageBox.Show(string.Format("发生致命错误\n错误代码: {0}", e.errorCode), "错误",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            OnConnectionClosed();
+        }
+
+        private void OnStatusChanged(string status)
+        {
+            if (StatusChanged != null)
+            {
+                StatusChanged(this, status);
+            }
+        }
+
+        private void OnConnectionClosed()
+        {
+            if (ConnectionClosed != null)
+            {
+                ConnectionClosed(this, EventArgs.Empty);
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Disconnect();
+                if (rdpClient != null)
+                {
+                    rdpClient.Dispose();
+                    rdpClient = null;
+                }
+            }
+            base.Dispose(disposing);
+        }
+
+        #region 获取物理分辨率（绕过DPI缩放）
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+        private const int DESKTOPHORZRES = 118; // 物理宽度
+        private const int DESKTOPVERTRES = 117; // 物理高度
+
+        /// <summary>
+        /// 获取屏幕的真实物理宽度（不受DPI缩放影响）
+        /// </summary>
+        private int GetPhysicalScreenWidth()
+        {
+            IntPtr hdc = GetDC(IntPtr.Zero);
+            int width = GetDeviceCaps(hdc, DESKTOPHORZRES);
+            ReleaseDC(IntPtr.Zero, hdc);
+            return width > 0 ? width : Screen.PrimaryScreen.Bounds.Width;
+        }
+
+        /// <summary>
+        /// 获取屏幕的真实物理高度（不受DPI缩放影响）
+        /// </summary>
+        private int GetPhysicalScreenHeight()
+        {
+            IntPtr hdc = GetDC(IntPtr.Zero);
+            int height = GetDeviceCaps(hdc, DESKTOPVERTRES);
+            ReleaseDC(IntPtr.Zero, hdc);
+            return height > 0 ? height : Screen.PrimaryScreen.Bounds.Height;
+        }
+
+        #endregion
+    }
+}
