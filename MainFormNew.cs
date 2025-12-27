@@ -37,6 +37,9 @@ namespace RDPManager
         private ToolStripButton btnDisconnect;
         private ToolStripLabel lblStatus;
 
+        // 终端计数器
+        private int _terminalCounter = 0;
+
         // 全屏相关
         private bool _isFullScreen = false;
         private FormWindowState _previousWindowState;
@@ -207,6 +210,23 @@ namespace RDPManager
             btnDisconnect.ToolTipText = "断开当前连接 (Ctrl+W)";
             btnDisconnect.Click += BtnDisconnect_Click;
             toolStrip.Items.Add(btnDisconnect);
+
+            toolStrip.Items.Add(new ToolStripSeparator());
+
+            // "+" 新建终端按钮
+            var btnNewTerminal = new ToolStripDropDownButton();
+            btnNewTerminal.Text = "+ 终端";
+            btnNewTerminal.ToolTipText = "打开新的终端标签页";
+
+            var cmdItem = new ToolStripMenuItem("命令提示符 (CMD)");
+            cmdItem.Click += (s, args) => OpenTerminal("cmd");
+            btnNewTerminal.DropDownItems.Add(cmdItem);
+
+            var psItem = new ToolStripMenuItem("Windows PowerShell");
+            psItem.Click += (s, args) => OpenTerminal("powershell");
+            btnNewTerminal.DropDownItems.Add(psItem);
+
+            toolStrip.Items.Add(btnNewTerminal);
 
             toolStrip.Items.Add(new ToolStripSeparator());
 
@@ -545,6 +565,18 @@ namespace RDPManager
 
         private void CloseTab(TabPage tabPage)
         {
+            // 先检查是否是终端标签页
+            TerminalPanel terminalPanel = GetTerminalPanel(tabPage);
+            if (terminalPanel != null)
+            {
+                terminalPanel.Stop();
+                tabControl.TabPages.Remove(tabPage);
+                tabPage.Dispose();
+                UpdateTitle();
+                return;
+            }
+
+            // RDP 标签页
             RdpPanel panel = GetRdpPanel(tabPage);
             if (panel != null) panel.Disconnect();
 
@@ -575,6 +607,91 @@ namespace RDPManager
                 }
             }
             this.Text = "R远程_3389管理器 - 远程桌面管理器";
+        }
+
+        #endregion
+
+        #region 终端处理
+
+        /// <summary>
+        /// 打开终端标签页
+        /// </summary>
+        private void OpenTerminal(string terminalType)
+        {
+            try
+            {
+                _terminalCounter++;
+                string title = terminalType.ToLower() == "cmd" ? "CMD" : "PowerShell";
+
+                // 创建标签页
+                TabPage tabPage = new TabPage();
+                tabPage.Text = string.Format("{0} #{1}    ", title, _terminalCounter);
+                tabPage.Tag = string.Format("terminal_{0}", _terminalCounter);
+
+                // 创建终端面板
+                TerminalPanel terminalPanel = new TerminalPanel(terminalType);
+                terminalPanel.ProcessExited += TerminalPanel_ProcessExited;
+
+                tabPage.Controls.Add(terminalPanel);
+                tabControl.TabPages.Add(tabPage);
+                tabControl.SelectedTab = tabPage;
+
+                // 启动终端
+                terminalPanel.Start();
+
+                lblStatus.Text = string.Format("已打开 {0} 终端", title);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(string.Format("打开终端失败: {0}", ex.Message), "错误",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// 终端进程退出
+        /// </summary>
+        private void TerminalPanel_ProcessExited(object sender, EventArgs e)
+        {
+            TerminalPanel panel = sender as TerminalPanel;
+            if (panel != null)
+            {
+                foreach (TabPage tab in tabControl.TabPages)
+                {
+                    if (tab.Controls.Contains(panel))
+                    {
+                        this.BeginInvoke(new Action(() => {
+                            CloseTerminalTab(tab);
+                        }));
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 关闭终端标签页
+        /// </summary>
+        private void CloseTerminalTab(TabPage tabPage)
+        {
+            TerminalPanel panel = GetTerminalPanel(tabPage);
+            if (panel != null) panel.Stop();
+
+            tabControl.TabPages.Remove(tabPage);
+            tabPage.Dispose();
+        }
+
+        /// <summary>
+        /// 获取标签页中的终端面板
+        /// </summary>
+        private TerminalPanel GetTerminalPanel(TabPage tabPage)
+        {
+            foreach (Control ctrl in tabPage.Controls)
+            {
+                TerminalPanel panel = ctrl as TerminalPanel;
+                if (panel != null) return panel;
+            }
+            return null;
         }
 
         #endregion
@@ -1068,6 +1185,9 @@ namespace RDPManager
         {
             // 窗口加载后强制设置左侧面板宽度
             _splitContainer.SplitterDistance = leftPanelWidth;
+
+            // 默认打开一个 PowerShell 终端标签页
+            OpenTerminal("powershell");
         }
 
         #endregion

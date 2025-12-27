@@ -70,6 +70,9 @@
     <Compile Include="RdpPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="TerminalPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="RdpTabForm.cs">
       <SubType>Form</SubType>
     </Compile>

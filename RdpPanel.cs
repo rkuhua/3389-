@@ -17,6 +17,14 @@ namespace RDPManager
         private readonly RdpConnection _connection;
         private readonly string _password;
 
+        // 自动重试相关
+        private int _retryCount = 0;
+        private const int MAX_RETRY_COUNT = 3;
+        private const int RETRY_DELAY_MS = 2000;
+        private Timer _retryTimer;
+        private bool _isRetrying = false;
+        private bool _manualDisconnect = false;
+
         public event EventHandler<string> StatusChanged;
         public event EventHandler ConnectionClosed;
         public event EventHandler<int> Disconnected;
@@ -164,6 +172,9 @@ namespace RDPManager
 
         public void Disconnect()
         {
+            _manualDisconnect = true;
+            StopRetryTimer();
+
             try
             {
                 if (rdpClient != null && rdpClient.Connected == 1)
@@ -175,6 +186,20 @@ namespace RDPManager
             {
                 // 忽略断开连接时的错误
             }
+        }
+
+        /// <summary>
+        /// 停止重试定时器
+        /// </summary>
+        private void StopRetryTimer()
+        {
+            if (_retryTimer != null)
+            {
+                _retryTimer.Stop();
+                _retryTimer.Dispose();
+                _retryTimer = null;
+            }
+            _isRetrying = false;
         }
 
         /// <summary>
@@ -291,6 +316,9 @@ namespace RDPManager
 
         private void RdpClient_OnConnected(object sender, EventArgs e)
         {
+            // 连接成功，重置重试计数
+            _retryCount = 0;
+            _isRetrying = false;
             OnStatusChanged("已连接");
         }
 
@@ -301,11 +329,108 @@ namespace RDPManager
 
         private void RdpClient_OnDisconnected(object sender, IMsTscAxEvents_OnDisconnectedEvent e)
         {
-            if (Disconnected != null)
+            int discReason = e.discReason;
+
+            // 如果是手动断开或正在调整分辨率，不触发事件
+            if (_manualDisconnect)
             {
-                Disconnected(this, e.discReason);
+                if (Disconnected != null)
+                {
+                    Disconnected(this, discReason);
+                }
+                OnConnectionClosed();
+                return;
             }
-            OnConnectionClosed();
+
+            // 判断是否应该自动重试
+            // discReason 1, 2 是正常断开
+            // 其他错误码可能是临时性问题，可以重试
+            bool shouldRetry = ShouldAutoRetry(discReason);
+
+            if (shouldRetry && _retryCount < MAX_RETRY_COUNT)
+            {
+                _retryCount++;
+                _isRetrying = true;
+                OnStatusChanged(string.Format("连接断开，{0}秒后自动重试 ({1}/{2})...",
+                    RETRY_DELAY_MS / 1000, _retryCount, MAX_RETRY_COUNT));
+
+                // 启动重试定时器
+                _retryTimer = new Timer();
+                _retryTimer.Interval = RETRY_DELAY_MS;
+                _retryTimer.Tick += RetryTimer_Tick;
+                _retryTimer.Start();
+            }
+            else
+            {
+                // 不重试或已达到最大重试次数
+                if (Disconnected != null)
+                {
+                    Disconnected(this, discReason);
+                }
+                OnConnectionClosed();
+            }
+        }
+
+        /// <summary>
+        /// 判断是否应该自动重试
+        /// </summary>
+        private bool ShouldAutoRetry(int discReason)
+        {
+            // 不需要重试的断开原因：
+            // 1 = 用户发起的断开
+            // 2 = 用户发起的断开（管理员）
+            // 3 = 服务器发起的断开
+            if (discReason == 1 || discReason == 2)
+            {
+                return false;
+            }
+
+            // 可以重试的常见临时性错误：
+            // 264 = 连接超时
+            // 516 = 网络问题
+            // 520 = 网络问题
+            // 776 = 远程计算机繁忙
+            // 2308 = 套接字关闭
+            // 2825 = 许可证问题（临时）
+            // 其他网络相关错误也可以重试
+            return true;
+        }
+
+        /// <summary>
+        /// 重试定时器
+        /// </summary>
+        private void RetryTimer_Tick(object sender, EventArgs e)
+        {
+            StopRetryTimer();
+
+            if (_manualDisconnect)
+            {
+                return;
+            }
+
+            OnStatusChanged(string.Format("正在重试连接 ({0}/{1})...", _retryCount, MAX_RETRY_COUNT));
+
+            try
+            {
+                // 清理旧控件
+                if (rdpClient != null)
+                {
+                    this.Controls.Remove(rdpClient);
+                    rdpClient.Dispose();
+                    rdpClient = null;
+                }
+
+                // 重新连接
+                Connect();
+            }
+            catch (Exception ex)
+            {
+                OnStatusChanged(string.Format("重试失败: {0}", ex.Message));
+                if (_retryCount >= MAX_RETRY_COUNT)
+                {
+                    OnConnectionClosed();
+                }
+            }
         }
 
         private void RdpClient_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)

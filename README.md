@@ -5,8 +5,10 @@
 ## 功能特性
 
 - **多标签页管理** - 同时管理多个远程桌面连接，标签页可自由切换
+- **内置终端** - 支持嵌入式 CMD 和 PowerShell 终端，启动即可使用
 - **连接分组** - 支持文件夹分组管理连接，层级清晰
 - **密码加密存储** - 使用 Windows DPAPI 安全加密保存密码
+- **自动重连** - RDP 连接断开后自动重试（最多 3 次）
 - **分辨率调整** - 支持多种分辨率预设，可适配窗口大小
 - **全屏模式** - F11 快捷键快速进入/退出全屏
 - **快捷键支持** - Ctrl+N 新建、Ctrl+W 关闭、Ctrl+Tab 切换标签
@@ -52,10 +54,22 @@ msbuild RDPManager.csproj /p:Configuration=Release /p:Platform=x86
 - 双击左侧连接列表中的连接项
 - 或右键点击选择「连接」
 
+### 使用终端
+
+- 点击工具栏「+ 终端」按钮
+- 选择「命令提示符 (CMD)」或「Windows PowerShell」
+- 终端会在新标签页中打开，支持完整交互
+
 ### 管理文件夹
 
 - 右键「所有连接」或任意文件夹，选择「新建文件夹」
 - 支持嵌套文件夹结构
+
+### 自动重连
+
+- 当 RDP 连接因网络问题断开时，程序会自动尝试重新连接
+- 最多重试 3 次，每次间隔 2 秒
+- 用户主动断开连接不会触发自动重连
 
 ## 快捷键
 
@@ -75,6 +89,7 @@ RDPManager/
 ├── MainFormNew.cs          # 主窗口（左右分栏布局）
 ├── EditConnectionForm.cs   # 编辑连接对话框
 ├── RdpPanel.cs             # RDP 连接面板控件
+├── TerminalPanel.cs        # 终端面板控件（嵌入 CMD/PowerShell）
 ├── RdpSessionForm.cs       # RDP 会话窗体
 ├── RdpTabForm.cs           # 标签页窗体
 ├── Models/
@@ -93,12 +108,26 @@ RDPManager/
 - Windows Forms
 - Microsoft Terminal Services ActiveX Control (mstscax.dll)
 - Newtonsoft.Json
+- Windows API (user32.dll) - 用于终端窗口嵌入
 
 ## 数据存储
 
 连接配置保存在用户目录：`%APPDATA%\RDPManager\connections.json`
 
 密码使用 Windows DPAPI 加密，仅当前用户可解密。
+
+## 更新日志
+
+### v1.1.0
+- 新增：内置终端功能（支持 CMD 和 PowerShell）
+- 新增：程序启动时默认打开 PowerShell 终端
+- 新增：RDP 连接自动重试机制
+- 优化：工具栏添加「+ 终端」按钮
+
+### v1.0.0
+- 初始版本发布
+- 多标签页 RDP 连接管理
+- 连接分组和密码加密
 
 ## 许可证
 
