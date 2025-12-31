@@ -320,6 +320,22 @@ namespace RDPManager
             _retryCount = 0;
             _isRetrying = false;
             OnStatusChanged("已连接");
+            
+            // 连接成功后强制获取焦点
+            this.BeginInvoke(new Action(() => {
+                FocusRdp();
+            }));
+        }
+
+        /// <summary>
+        /// 强制 RDP 控件获取焦点
+        /// </summary>
+        public void FocusRdp()
+        {
+            if (rdpClient != null && rdpClient.Connected == 1)
+            {
+                rdpClient.Focus();
+            }
         }
 
         private void RdpClient_OnLoginComplete(object sender, EventArgs e)
@@ -380,7 +396,8 @@ namespace RDPManager
             // 1 = 用户发起的断开
             // 2 = 用户发起的断开（管理员）
             // 3 = 服务器发起的断开
-            if (discReason == 1 || discReason == 2)
+            // 5 = 连接被替换 (Connection replaced) - 被其他位置登录挤掉
+            if (discReason == 1 || discReason == 2 || discReason == 5)
             {
                 return false;
             }

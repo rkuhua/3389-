@@ -242,9 +242,15 @@ namespace RDPManager
             tabControl.SizeMode = TabSizeMode.Fixed;
             tabControl.ItemSize = new Size(180, 25);
             tabControl.Padding = new Point(12, 3);
+            tabControl.AllowDrop = true; // 允许拖拽
             tabControl.DrawItem += TabControl_DrawItem;
             tabControl.MouseClick += TabControl_MouseClick;
             tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
+            
+            // 拖拽事件
+            tabControl.MouseDown += TabControl_MouseDown;
+            tabControl.DragOver += TabControl_DragOver;
+            tabControl.DragDrop += TabControl_DragDrop;
 
             rightPanel.Controls.Add(tabControl);
             rightPanel.Controls.Add(toolStrip);
@@ -513,6 +519,9 @@ namespace RDPManager
 
         private void TabControl_DrawItem(object sender, DrawItemEventArgs e)
         {
+            // 索引检查，防止拖拽时越界
+            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
+
             TabPage tabPage = tabControl.TabPages[e.Index];
             Rectangle tabRect = tabControl.GetTabRect(e.Index);
 
@@ -561,6 +570,82 @@ namespace RDPManager
         private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             UpdateTitle();
+            
+            // 切换标签页时，尝试让当前 RDP 面板获取焦点
+            if (tabControl.SelectedTab != null)
+            {
+                RdpPanel panel = GetRdpPanel(tabControl.SelectedTab);
+                if (panel != null)
+                {
+                    panel.FocusRdp();
+                }
+            }
+        }
+
+        // 记录正在拖拽的标签页
+        private TabPage _draggedTab;
+
+        private void TabControl_MouseDown(object sender, MouseEventArgs e)
+        {
+            _draggedTab = null;
+            if (e.Button == MouseButtons.Left)
+            {
+                for (int i = 0; i < tabControl.TabPages.Count; i++)
+                {
+                    if (tabControl.GetTabRect(i).Contains(e.Location))
+                    {
+                        _draggedTab = tabControl.TabPages[i];
+                        // 启动拖拽操作
+                        tabControl.DoDragDrop(_draggedTab, DragDropEffects.Move);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void TabControl_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(TabPage)))
+            {
+                e.Effect = DragDropEffects.Move;
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void TabControl_DragDrop(object sender, DragEventArgs e)
+        {
+            if (_draggedTab == null) return;
+
+            Point clientPoint = tabControl.PointToClient(new Point(e.X, e.Y));
+            int targetIndex = -1;
+
+            // 查找放置目标的索引
+            for (int i = 0; i < tabControl.TabCount; i++)
+            {
+                if (tabControl.GetTabRect(i).Contains(clientPoint))
+                {
+                    targetIndex = i;
+                    break;
+                }
+            }
+
+            // 如果没有找到目标（例如拖到了空白处），且在标签栏范围内，则移到最后
+            if (targetIndex == -1)
+            {
+                // 简单的判断：如果在控件范围内，就放到最后
+                targetIndex = tabControl.TabCount - 1;
+            }
+
+            if (targetIndex != -1 && targetIndex != tabControl.TabPages.IndexOf(_draggedTab))
+            {
+                // 移动标签页
+                tabControl.TabPages.Remove(_draggedTab);
+                tabControl.TabPages.Insert(targetIndex, _draggedTab);
+                tabControl.SelectedTab = _draggedTab;
+            }
         }
 
         private void CloseTab(TabPage tabPage)
