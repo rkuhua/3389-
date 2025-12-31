@@ -21,6 +21,16 @@ namespace RDPManager
         public RdpTabForm()
         {
             InitializeComponent();
+            ApplyModernStyle();
+        }
+        
+        private void ApplyModernStyle()
+        {
+            // 应用 ToolStrip 样式
+            toolStrip.Renderer = new UIHelper.ModernToolStripRenderer();
+            toolStrip.BackColor = UIHelper.ColorBackground;
+            
+            this.Font = UIHelper.MainFont;
         }
 
         private void InitializeComponent()
@@ -31,6 +41,7 @@ namespace RDPManager
             toolStrip = new ToolStrip();
             toolStrip.Dock = DockStyle.Top;
             toolStrip.GripStyle = ToolStripGripStyle.Hidden;
+            toolStrip.Padding = new Padding(5); // 增加内边距
 
             btnFullScreen = new ToolStripButton();
             btnFullScreen.Text = "全屏 (F11)";
@@ -76,8 +87,8 @@ namespace RDPManager
             tabControl.Dock = DockStyle.Fill;
             tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
             tabControl.SizeMode = TabSizeMode.Fixed;
-            tabControl.ItemSize = new Size(200, 25);
-            tabControl.Padding = new Point(15, 3);
+            tabControl.ItemSize = new Size(200, 32); // 增加高度
+            tabControl.Padding = new Point(15, 5);
             tabControl.DrawItem += TabControl_DrawItem;
             tabControl.MouseClick += TabControl_MouseClick;
             tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
@@ -175,32 +186,70 @@ namespace RDPManager
         /// </summary>
         private void TabControl_DrawItem(object sender, DrawItemEventArgs e)
         {
+             // 索引检查
+            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
+
             TabPage tabPage = tabControl.TabPages[e.Index];
             Rectangle tabRect = tabControl.GetTabRect(e.Index);
+            bool isSelected = (tabControl.SelectedIndex == e.Index);
+
+            // 准备画刷和颜色
+            Color bgColor = isSelected ? UIHelper.TabActiveBg : UIHelper.TabInactiveBg;
+            Color textColor = isSelected ? UIHelper.ColorTextMain : UIHelper.ColorTextLight;
+            Font textFont = isSelected ? UIHelper.BoldFont : UIHelper.MainFont;
 
             // 绘制背景
-            if (tabControl.SelectedIndex == e.Index)
+            using (SolidBrush bgBrush = new SolidBrush(bgColor))
             {
-                e.Graphics.FillRectangle(Brushes.White, tabRect);
+                e.Graphics.FillRectangle(bgBrush, tabRect);
             }
-            else
+
+            // 绘制顶部高亮条（仅选中时）
+            if (isSelected)
             {
-                e.Graphics.FillRectangle(SystemBrushes.Control, tabRect);
+                using (Pen highlightPen = new Pen(UIHelper.ColorPrimary, 3))
+                {
+                    e.Graphics.DrawLine(highlightPen, tabRect.Left, tabRect.Top + 1, tabRect.Right, tabRect.Top + 1);
+                }
+            }
+            
+            // 绘制底部分隔线（非选中时）
+            if (!isSelected)
+            {
+                 using (Pen borderPen = new Pen(UIHelper.ColorBorder))
+                 {
+                     e.Graphics.DrawLine(borderPen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                 }
             }
 
             // 绘制文本
             string title = tabPage.Text.TrimEnd();
-            if (title.Length > 18)
+            // 简单截断文本
+            if (TextRenderer.MeasureText(title, textFont).Width > tabRect.Width - 30)
             {
-                title = title.Substring(0, 15) + "...";
+                 while (TextRenderer.MeasureText(title + "...", textFont).Width > tabRect.Width - 30 && title.Length > 0)
+                 {
+                     title = title.Substring(0, title.Length - 1);
+                 }
+                 title += "...";
             }
-            TextRenderer.DrawText(e.Graphics, title, e.Font,
-                new Rectangle(tabRect.X + 5, tabRect.Y + 5, tabRect.Width - 25, tabRect.Height - 5),
-                Color.Black, TextFormatFlags.Left);
+
+            TextRenderer.DrawText(e.Graphics, title, textFont,
+                new Rectangle(tabRect.X + 8, tabRect.Y + 8, tabRect.Width - 30, tabRect.Height - 16),
+                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
             // 绘制关闭按钮 X
-            Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
-            e.Graphics.DrawString("×", new Font("Arial", 10, FontStyle.Bold), Brushes.Gray, closeRect);
+            int closeBtnSize = 16;
+            int closeBtnX = tabRect.Right - 22;
+            int closeBtnY = tabRect.Top + (tabRect.Height - closeBtnSize) / 2;
+            Rectangle closeRect = new Rectangle(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
+            
+            using (Font closeFont = new Font("Arial", 10, FontStyle.Bold))
+            {
+                TextRenderer.DrawText(e.Graphics, "×", closeFont, closeRect,
+                    isSelected ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 150),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
         }
 
         /// <summary>
@@ -211,7 +260,11 @@ namespace RDPManager
             for (int i = 0; i < tabControl.TabPages.Count; i++)
             {
                 Rectangle tabRect = tabControl.GetTabRect(i);
-                Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
+                
+                int closeBtnSize = 16;
+                int closeBtnX = tabRect.Right - 22;
+                int closeBtnY = tabRect.Top + (tabRect.Height - closeBtnSize) / 2;
+                Rectangle closeRect = new Rectangle(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
 
                 if (closeRect.Contains(e.Location))
                 {

@@ -51,7 +51,24 @@ namespace RDPManager
         {
             _dataManager = new DataManager();
             InitializeComponent();
+            ApplyModernStyle(); // 应用自定义样式
             LoadConnections();
+        }
+        
+        private void ApplyModernStyle()
+        {
+            // 应用 TreeView 样式
+            UIHelper.StyleTreeView(treeView);
+            
+            // 应用 ToolStrip 样式
+            toolStrip.Renderer = new UIHelper.ModernToolStripRenderer();
+            toolStrip.BackColor = UIHelper.ColorBackground;
+            
+            // 左侧面板背景
+            leftPanel.BackColor = UIHelper.ColorPanelLeft;
+            
+            // 字体
+            this.Font = UIHelper.MainFont;
         }
 
         private void InitializeComponent()
@@ -59,7 +76,7 @@ namespace RDPManager
             this.SuspendLayout();
 
             // 窗体设置
-            this.Text = "R远程_3389管理器 - 远程桌面管理器 by作者微信：rrror777";
+            this.Text = "R远程_3389管理器 - 远程桌面管理器";
             this.Size = new Size(1400, 900);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.WindowState = FormWindowState.Maximized;
@@ -84,55 +101,48 @@ namespace RDPManager
             _splitContainer = new SplitContainer();
             _splitContainer.Dock = DockStyle.Fill;
             _splitContainer.SplitterDistance = leftPanelWidth;
-            _splitContainer.SplitterWidth = 4;
-            _splitContainer.FixedPanel = FixedPanel.None; // 允许双向自由调整
-            _splitContainer.Panel1MinSize = 100; // 左侧最小宽度
-            _splitContainer.Panel2MinSize = 100; // 右侧最小宽度
+            _splitContainer.SplitterWidth = 1; // 更细的分隔条
+            _splitContainer.BackColor = UIHelper.ColorBorder; // 分隔条颜色
+            _splitContainer.FixedPanel = FixedPanel.None;
+            _splitContainer.Panel1MinSize = 100;
+            _splitContainer.Panel2MinSize = 100;
 
             // === 左侧面板 ===
             leftPanel = new Panel();
             leftPanel.Dock = DockStyle.Fill;
-            leftPanel.BackColor = Color.FromArgb(250, 250, 250);
+            leftPanel.BackColor = UIHelper.ColorPanelLeft;
+            leftPanel.Padding = new Padding(10, 10, 0, 0); // 增加一点内边距
 
-            // 左侧标题栏
-            Panel leftHeader = new Panel();
-            leftHeader.Dock = DockStyle.Top;
-            leftHeader.Height = 30;
-            leftHeader.BackColor = Color.FromArgb(240, 240, 240);
-
-            Label lblConnections = new Label();
-            lblConnections.Text = "连接列表";
-            lblConnections.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
-            lblConnections.Location = new Point(10, 6);
-            lblConnections.AutoSize = true;
-            leftHeader.Controls.Add(lblConnections);
-
+            // 左侧标题栏 (去掉传统的 Panel Header，直接用 Padding 和 Label 或者直接 TreeView)
+            // 为了美观，我们移除原来的灰色标题栏，直接让 TreeView 铺满
+            
             // 树形列表
             treeView = new TreeView();
             treeView.Dock = DockStyle.Fill;
-            treeView.Font = new Font("Microsoft YaHei", 9);
+            treeView.Font = UIHelper.MainFont;
             treeView.ImageList = CreateImageList();
-            treeView.ShowLines = true;
+            treeView.ShowLines = false; // 现代风格不显示线
             treeView.ShowPlusMinus = true;
-            treeView.ShowRootLines = true;
+            treeView.ShowRootLines = false;
             treeView.HideSelection = false;
             treeView.DoubleClick += TreeView_DoubleClick;
             treeView.MouseUp += TreeView_MouseUp;
 
             leftPanel.Controls.Add(treeView);
-            leftPanel.Controls.Add(leftHeader);
 
             _splitContainer.Panel1.Controls.Add(leftPanel);
 
             // === 右侧面板 ===
             rightPanel = new Panel();
             rightPanel.Dock = DockStyle.Fill;
+            rightPanel.BackColor = UIHelper.ColorBackground; // 右侧背景色
 
             // 工具栏
             toolStrip = new ToolStrip();
             toolStrip.Dock = DockStyle.Top;
             toolStrip.GripStyle = ToolStripGripStyle.Hidden;
             toolStrip.ImageScalingSize = new Size(20, 20);
+            toolStrip.Padding = new Padding(5); // 增加内边距
 
             // 新建按钮
             btnAdd = new ToolStripButton();
@@ -240,8 +250,8 @@ namespace RDPManager
             tabControl.Dock = DockStyle.Fill;
             tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
             tabControl.SizeMode = TabSizeMode.Fixed;
-            tabControl.ItemSize = new Size(180, 25);
-            tabControl.Padding = new Point(12, 3);
+            tabControl.ItemSize = new Size(200, 32); // 增加高度和宽度
+            tabControl.Padding = new Point(15, 5);
             tabControl.AllowDrop = true; // 允许拖拽
             tabControl.DrawItem += TabControl_DrawItem;
             tabControl.MouseClick += TabControl_MouseClick;
@@ -524,21 +534,69 @@ namespace RDPManager
 
             TabPage tabPage = tabControl.TabPages[e.Index];
             Rectangle tabRect = tabControl.GetTabRect(e.Index);
+            bool isSelected = (tabControl.SelectedIndex == e.Index);
 
-            if (tabControl.SelectedIndex == e.Index)
-                e.Graphics.FillRectangle(Brushes.White, tabRect);
-            else
-                e.Graphics.FillRectangle(SystemBrushes.Control, tabRect);
+            // 准备画刷和颜色
+            Color bgColor = isSelected ? UIHelper.TabActiveBg : UIHelper.TabInactiveBg;
+            Color textColor = isSelected ? UIHelper.ColorTextMain : UIHelper.ColorTextLight;
+            Font textFont = isSelected ? UIHelper.BoldFont : UIHelper.MainFont;
 
+            // 绘制背景
+            using (SolidBrush bgBrush = new SolidBrush(bgColor))
+            {
+                e.Graphics.FillRectangle(bgBrush, tabRect);
+            }
+
+            // 绘制顶部高亮条（仅选中时）
+            if (isSelected)
+            {
+                using (Pen highlightPen = new Pen(UIHelper.ColorPrimary, 3))
+                {
+                    e.Graphics.DrawLine(highlightPen, tabRect.Left, tabRect.Top + 1, tabRect.Right, tabRect.Top + 1);
+                }
+            }
+            
+            // 绘制底部分隔线（非选中时）
+            if (!isSelected)
+            {
+                 using (Pen borderPen = new Pen(UIHelper.ColorBorder))
+                 {
+                     e.Graphics.DrawLine(borderPen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                 }
+            }
+
+            // 绘制文本
             string title = tabPage.Text.TrimEnd();
-            if (title.Length > 15) title = title.Substring(0, 12) + "...";
+            // 简单截断文本
+            if (TextRenderer.MeasureText(title, textFont).Width > tabRect.Width - 30)
+            {
+                 while (TextRenderer.MeasureText(title + "...", textFont).Width > tabRect.Width - 30 && title.Length > 0)
+                 {
+                     title = title.Substring(0, title.Length - 1);
+                 }
+                 title += "...";
+            }
 
-            TextRenderer.DrawText(e.Graphics, title, e.Font,
-                new Rectangle(tabRect.X + 5, tabRect.Y + 5, tabRect.Width - 25, tabRect.Height - 5),
-                Color.Black, TextFormatFlags.Left);
+            TextRenderer.DrawText(e.Graphics, title, textFont,
+                new Rectangle(tabRect.X + 8, tabRect.Y + 8, tabRect.Width - 30, tabRect.Height - 16),
+                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
-            Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
-            e.Graphics.DrawString("×", new Font("Arial", 10, FontStyle.Bold), Brushes.Gray, closeRect);
+            // 绘制关闭按钮 X
+            // 计算垂直居中的位置
+            int closeBtnSize = 16;
+            int closeBtnX = tabRect.Right - 22;
+            int closeBtnY = tabRect.Top + (tabRect.Height - closeBtnSize) / 2;
+            Rectangle closeRect = new Rectangle(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
+
+            // 检测鼠标是否悬停在关闭按钮上（这里简化处理，只绘制灰色 X）
+            // 如果需要悬停效果，需要重写 OnMouseMove 并 invalidate
+            
+            using (Font closeFont = new Font("Arial", 10, FontStyle.Bold))
+            {
+                TextRenderer.DrawText(e.Graphics, "×", closeFont, closeRect,
+                    isSelected ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 150),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
         }
 
         private void TabControl_MouseClick(object sender, MouseEventArgs e)
@@ -546,7 +604,12 @@ namespace RDPManager
             for (int i = 0; i < tabControl.TabPages.Count; i++)
             {
                 Rectangle tabRect = tabControl.GetTabRect(i);
-                Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
+                
+                // 匹配 DrawItem 中的位置
+                int closeBtnSize = 16;
+                int closeBtnX = tabRect.Right - 22;
+                int closeBtnY = tabRect.Top + (tabRect.Height - closeBtnSize) / 2;
+                Rectangle closeRect = new Rectangle(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
 
                 if (closeRect.Contains(e.Location))
                 {
@@ -593,7 +656,11 @@ namespace RDPManager
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
                     Rectangle tabRect = tabControl.GetTabRect(i);
-                    Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
+                    // 匹配 DrawItem 中的位置
+                    int closeBtnSize = 16;
+                    int closeBtnX = tabRect.Right - 22;
+                    int closeBtnY = tabRect.Top + (tabRect.Height - closeBtnSize) / 2;
+                    Rectangle closeRect = new Rectangle(closeBtnX, closeBtnY, closeBtnSize, closeBtnSize);
 
                     // 如果点击的是关闭按钮，不启动拖拽
                     if (closeRect.Contains(e.Location))
