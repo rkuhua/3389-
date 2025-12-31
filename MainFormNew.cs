@@ -35,6 +35,7 @@ namespace RDPManager
         private ToolStripDropDownButton btnResolution;
         private ToolStripButton btnTogglePanel;
         private ToolStripButton btnDisconnect;
+        private ToolStripButton btnSettings; // 设置按钮
         private ToolStripLabel lblStatus;
 
         // 终端计数器
@@ -50,6 +51,7 @@ namespace RDPManager
         public MainFormNew()
         {
             _dataManager = new DataManager();
+            LoadThemeConfig(); // 加载主题
             InitializeComponent();
             ApplyModernStyle(); // 应用自定义样式
             LoadConnections();
@@ -61,14 +63,69 @@ namespace RDPManager
             UIHelper.StyleTreeView(treeView);
             
             // 应用 ToolStrip 样式
+            // 需要重新创建 Renderer 以刷新颜色表
             toolStrip.Renderer = new UIHelper.ModernToolStripRenderer();
             toolStrip.BackColor = UIHelper.ColorBackground;
             
             // 左侧面板背景
             leftPanel.BackColor = UIHelper.ColorPanelLeft;
+            // 树形视图背景
+            treeView.BackColor = UIHelper.ColorPanelLeft;
+            treeView.ForeColor = UIHelper.ColorTextMain;
             
-            // 字体
+            // 右侧面板背景
+            rightPanel.BackColor = UIHelper.ColorBackground;
+            
+            // 主字体和颜色
             this.Font = UIHelper.MainFont;
+            this.BackColor = UIHelper.ColorBackground;
+            this.ForeColor = UIHelper.ColorTextMain;
+            
+            // 强制刷新控件重绘
+            this.Invalidate(true);
+            treeView.Invalidate();
+            tabControl.Invalidate();
+        }
+
+        private void BtnSettings_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new SettingsForm(UIHelper.CurrentTheme))
+            {
+                if (settingsForm.ShowDialog() == DialogResult.OK)
+                {
+                    string newTheme = settingsForm.SelectedTheme;
+                    if (newTheme != UIHelper.CurrentTheme)
+                    {
+                        UIHelper.SetTheme(newTheme);
+                        ApplyModernStyle();
+                        SaveThemeConfig(newTheme);
+                    }
+                }
+            }
+        }
+
+        private void SaveThemeConfig(string theme)
+        {
+            try
+            {
+                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "theme.cfg");
+                System.IO.File.WriteAllText(configPath, theme);
+            }
+            catch { /* 忽略保存错误 */ }
+        }
+
+        private void LoadThemeConfig()
+        {
+            try
+            {
+                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "theme.cfg");
+                if (System.IO.File.Exists(configPath))
+                {
+                    string theme = System.IO.File.ReadAllText(configPath).Trim();
+                    UIHelper.SetTheme(theme);
+                }
+            }
+            catch { /* 忽略加载错误 */ }
         }
 
         private void InitializeComponent()
@@ -111,24 +168,67 @@ namespace RDPManager
             leftPanel = new Panel();
             leftPanel.Dock = DockStyle.Fill;
             leftPanel.BackColor = UIHelper.ColorPanelLeft;
-            leftPanel.Padding = new Padding(10, 10, 0, 0); // 增加一点内边距
-
-            // 左侧标题栏 (去掉传统的 Panel Header，直接用 Padding 和 Label 或者直接 TreeView)
-            // 为了美观，我们移除原来的灰色标题栏，直接让 TreeView 铺满
+            leftPanel.Padding = new Padding(0, 0, 1, 0); // 仅右侧留白画边框
             
+            // 绘制右边框
+            leftPanel.Paint += (s, e) => {
+                using (Pen p = new Pen(UIHelper.ColorBorder))
+                {
+                    e.Graphics.DrawLine(p, leftPanel.Width - 1, 0, leftPanel.Width - 1, leftPanel.Height);
+                }
+            };
+            leftPanel.Resize += (s, e) => leftPanel.Invalidate();
+
+            // 左侧标题栏 (MobaXterm 风格)
+            Panel headerPanel = new Panel();
+            headerPanel.Dock = DockStyle.Top;
+            headerPanel.Height = 35;
+            headerPanel.BackColor = Color.Transparent; // 跟随 leftPanel
+            headerPanel.Padding = new Padding(10, 0, 0, 0);
+            
+            // 标题图标 (简单绘制一个模拟图标)
+            PictureBox iconBox = new PictureBox();
+            iconBox.Size = new Size(16, 16);
+            iconBox.Location = new Point(10, 10);
+            // 简单画个用户图标
+            Bitmap iconBmp = new Bitmap(16, 16);
+            using (Graphics g = Graphics.FromImage(iconBmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.FillEllipse(Brushes.Orange, 4, 2, 8, 8); // 头
+                g.FillPie(Brushes.Orange, 1, 8, 14, 14, 200, 140); //身
+            }
+            iconBox.Image = iconBmp;
+            
+            Label lblTitle = new Label();
+            lblTitle.Text = "用户会话";
+            lblTitle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblTitle.Location = new Point(32, 9);
+            lblTitle.AutoSize = true;
+            
+            headerPanel.Controls.Add(iconBox);
+            headerPanel.Controls.Add(lblTitle);
+
             // 树形列表
             treeView = new TreeView();
             treeView.Dock = DockStyle.Fill;
             treeView.Font = UIHelper.MainFont;
             treeView.ImageList = CreateImageList();
-            treeView.ShowLines = false; // 现代风格不显示线
+            
+            // MobaXterm 风格设置
+            treeView.ShowLines = true;
             treeView.ShowPlusMinus = true;
-            treeView.ShowRootLines = false;
+            treeView.ShowRootLines = true;
             treeView.HideSelection = false;
+            treeView.FullRowSelect = false; // 仅选中文字
+            treeView.BorderStyle = BorderStyle.None;
+            treeView.BackColor = UIHelper.ColorPanelLeft;
+            
             treeView.DoubleClick += TreeView_DoubleClick;
             treeView.MouseUp += TreeView_MouseUp;
 
             leftPanel.Controls.Add(treeView);
+            leftPanel.Controls.Add(headerPanel);
 
             _splitContainer.Panel1.Controls.Add(leftPanel);
 
@@ -221,6 +321,13 @@ namespace RDPManager
             btnDisconnect.Click += BtnDisconnect_Click;
             toolStrip.Items.Add(btnDisconnect);
 
+            // 设置按钮
+            btnSettings = new ToolStripButton();
+            btnSettings.Text = "设置";
+            btnSettings.ToolTipText = "更改主题和其他设置";
+            btnSettings.Click += BtnSettings_Click;
+            toolStrip.Items.Add(btnSettings);
+
             toolStrip.Items.Add(new ToolStripSeparator());
 
             // "+" 新建终端按钮
@@ -281,6 +388,38 @@ namespace RDPManager
             ImageList imageList = new ImageList();
             imageList.ImageSize = new Size(16, 16);
             imageList.ColorDepth = ColorDepth.Depth32Bit;
+            
+            // 0: 根节点/默认
+            // 1: 文件夹 (闭合)
+            // 2: 文件夹 (展开) - 暂时复用1
+            // 3: RDP 连接
+            
+            // 绘制简单的图标替代加载外部文件，确保独立运行
+            
+            // 0. 根/默认
+            Bitmap bmpRoot = new Bitmap(16, 16);
+            using(Graphics g = Graphics.FromImage(bmpRoot)) {
+                g.FillEllipse(Brushes.Gray, 4, 4, 8, 8);
+            }
+            imageList.Images.Add(bmpRoot);
+            
+            // 1. 文件夹 (浅蓝色)
+            Bitmap bmpFolder = new Bitmap(16, 16);
+            using(Graphics g = Graphics.FromImage(bmpFolder)) {
+                g.FillRectangle(new SolidBrush(Color.FromArgb(140, 180, 230)), 2, 4, 12, 10);
+                g.FillRectangle(new SolidBrush(Color.FromArgb(140, 180, 230)), 2, 2, 6, 2);
+            }
+            imageList.Images.Add(bmpFolder);
+            
+            // 2. RDP 连接 (屏幕样式)
+            Bitmap bmpRdp = new Bitmap(16, 16);
+            using(Graphics g = Graphics.FromImage(bmpRdp)) {
+                g.FillRectangle(Brushes.Black, 2, 3, 12, 9); // 屏幕黑边
+                g.FillRectangle(Brushes.SkyBlue, 3, 4, 10, 7); // 屏幕内容
+                g.FillRectangle(Brushes.Gray, 6, 13, 4, 1); // 底座
+            }
+            imageList.Images.Add(bmpRdp);
+            
             return imageList;
         }
 
@@ -344,7 +483,7 @@ namespace RDPManager
             {
                 TreeNode node = new TreeNode(conn.Name);
                 node.Tag = conn;
-                node.ImageIndex = 2;
+                node.ImageIndex = 2; // RDP 图标索引
                 node.SelectedImageIndex = 2;
                 node.ToolTipText = string.Format("{0}@{1}", conn.Username, conn.FullAddress);
                 parentNode.Nodes.Add(node);
@@ -374,61 +513,50 @@ namespace RDPManager
             if (e.Button == MouseButtons.Right)
             {
                 TreeNode node = treeView.GetNodeAt(e.Location);
-                if (node != null)
+                
+                // 如果点击的是空白处，也弹出通用菜单
+                if (node == null)
+                {
+                    // 选中根节点或者清空选择
+                    treeView.SelectedNode = null;
+                }
+                else
                 {
                     treeView.SelectedNode = node;
-
-                    ContextMenuStrip menu = new ContextMenuStrip();
-
-                    if (node.Tag is RdpConnection)
-                    {
-                        // 连接节点的右键菜单
-                        menu.Items.Add("连接", null, (s, args) => {
-                            ConnectToRemote((RdpConnection)node.Tag);
-                        });
-                        menu.Items.Add("-");
-                        menu.Items.Add("编辑", null, (s, args) => {
-                            EditConnection((RdpConnection)node.Tag);
-                        });
-                        menu.Items.Add("删除", null, (s, args) => {
-                            DeleteConnection((RdpConnection)node.Tag);
-                        });
-                    }
-                    else if (node.Tag is ConnectionFolder)
-                    {
-                        // 文件夹节点的右键菜单
-                        ConnectionFolder folder = (ConnectionFolder)node.Tag;
-                        menu.Items.Add("新建连接", null, (s, args) => {
-                            AddNewConnectionToFolder(folder.Id);
-                        });
-                        menu.Items.Add("新建子文件夹", null, (s, args) => {
-                            AddNewFolder(folder.Id);
-                        });
-                        menu.Items.Add("-");
-                        menu.Items.Add("重命名", null, (s, args) => {
-                            RenameFolder(folder);
-                        });
-                        menu.Items.Add("删除文件夹", null, (s, args) => {
-                            DeleteFolder(folder);
-                        });
-                    }
-                    else
-                    {
-                        // 根节点的右键菜单
-                        menu.Items.Add("新建连接", null, (s, args) => {
-                            AddNewConnection();
-                        });
-                        menu.Items.Add("新建文件夹", null, (s, args) => {
-                            AddNewFolder(string.Empty);
-                        });
-                        menu.Items.Add("-");
-                        menu.Items.Add("刷新", null, (s, args) => {
-                            LoadConnections();
-                        });
-                    }
-
-                    menu.Show(treeView, e.Location);
                 }
+
+                ContextMenuStrip menu = new ContextMenuStrip();
+                menu.Renderer = new UIHelper.ModernToolStripRenderer(); // 应用主题渲染器
+
+                if (node != null && node.Tag is RdpConnection)
+                {
+                    // === 连接节点菜单 ===
+                    menu.Items.Add("连接", null, (s, args) => ConnectToRemote((RdpConnection)node.Tag));
+                    menu.Items.Add("-");
+                    menu.Items.Add("编辑", null, (s, args) => EditConnection((RdpConnection)node.Tag));
+                    menu.Items.Add("删除", null, (s, args) => DeleteConnection((RdpConnection)node.Tag));
+                }
+                else if (node != null && node.Tag is ConnectionFolder)
+                {
+                    // === 文件夹节点菜单 ===
+                    ConnectionFolder folder = (ConnectionFolder)node.Tag;
+                    menu.Items.Add("在此新建连接", null, (s, args) => AddNewConnectionToFolder(folder.Id));
+                    menu.Items.Add("在此新建子文件夹", null, (s, args) => AddNewFolder(folder.Id));
+                    menu.Items.Add("-");
+                    menu.Items.Add("重命名", null, (s, args) => RenameFolder(folder));
+                    menu.Items.Add("删除文件夹", null, (s, args) => DeleteFolder(folder));
+                }
+                else
+                {
+                    // === 根节点或空白处菜单 ===
+                    // 如果是在空白处点击，默认在根目录下操作
+                    menu.Items.Add("新建连接", null, (s, args) => AddNewConnection());
+                    menu.Items.Add("新建文件夹", null, (s, args) => AddNewFolder(string.Empty));
+                    menu.Items.Add("-");
+                    menu.Items.Add("刷新列表", null, (s, args) => LoadConnections());
+                }
+
+                menu.Show(treeView, e.Location);
             }
         }
 
@@ -1347,8 +1475,8 @@ namespace RDPManager
             // 窗口加载后强制设置左侧面板宽度
             _splitContainer.SplitterDistance = leftPanelWidth;
 
-            // 默认打开一个 PowerShell 终端标签页
-            OpenTerminal("powershell");
+            // 默认打开一个 CMD 终端标签页
+            OpenTerminal("cmd");
         }
 
         #endregion
