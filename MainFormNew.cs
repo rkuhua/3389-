@@ -695,19 +695,19 @@ namespace RDPManager
 
             // 绘制文本
             string title = tabPage.Text.TrimEnd();
-            // 简单截断文本
-            if (TextRenderer.MeasureText(title, textFont).Width > tabRect.Width - 30)
-            {
-                 while (TextRenderer.MeasureText(title + "...", textFont).Width > tabRect.Width - 30 && title.Length > 0)
-                 {
-                     title = title.Substring(0, title.Length - 1);
-                 }
-                 title += "...";
-            }
+            
+            // 计算文字区域，确保垂直居中
+            Rectangle textRect = new Rectangle(
+                tabRect.X + 8,
+                tabRect.Y + 1, // 稍微上移，利用 VerticalCenter 居中
+                tabRect.Width - 30,
+                tabRect.Height - 2 // 减小高度边距，避免被截断
+            );
 
+            // 使用 EndEllipsis 让 GDI+ 自动处理截断和省略号
             TextRenderer.DrawText(e.Graphics, title, textFont,
-                new Rectangle(tabRect.X + 8, tabRect.Y + 8, tabRect.Width - 30, tabRect.Height - 16),
-                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                textRect,
+                textColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
 
             // 绘制关闭按钮 X
             // 计算垂直居中的位置
