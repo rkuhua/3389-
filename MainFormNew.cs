@@ -592,7 +592,16 @@ namespace RDPManager
             {
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
-                    if (tabControl.GetTabRect(i).Contains(e.Location))
+                    Rectangle tabRect = tabControl.GetTabRect(i);
+                    Rectangle closeRect = new Rectangle(tabRect.Right - 20, tabRect.Top + 5, 15, 15);
+
+                    // 如果点击的是关闭按钮，不启动拖拽
+                    if (closeRect.Contains(e.Location))
+                    {
+                        return;
+                    }
+
+                    if (tabRect.Contains(e.Location))
                     {
                         _draggedTab = tabControl.TabPages[i];
                         // 启动拖拽操作
