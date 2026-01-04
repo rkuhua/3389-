@@ -119,6 +119,45 @@ namespace RDPManager.Utils
         #region 文件夹管理
 
         /// <summary>
+        /// 移动文件夹到另一个文件夹
+        /// </summary>
+        public void MoveFolderToFolder(string folderId, string targetParentId)
+        {
+            var folder = _folders.FirstOrDefault(f => f.Id == folderId);
+            if (folder != null)
+            {
+                // 检查循环引用（目标文件夹不能是当前文件夹或其子文件夹）
+                if (IsSubFolder(targetParentId, folderId))
+                {
+                    throw new InvalidOperationException("不能将文件夹移动到其自身的子文件夹中。");
+                }
+
+                folder.ParentId = targetParentId ?? string.Empty;
+                SaveData();
+            }
+        }
+
+        /// <summary>
+        /// 检查 folderId 是否是 potentialParentId 的子文件夹（递归）
+        /// </summary>
+        private bool IsSubFolder(string folderId, string potentialParentId)
+        {
+            if (string.IsNullOrEmpty(folderId) || string.IsNullOrEmpty(potentialParentId))
+                return false;
+
+            if (folderId == potentialParentId)
+                return true;
+
+            var folder = GetFolderById(folderId);
+            if (folder != null && !string.IsNullOrEmpty(folder.ParentId))
+            {
+                return IsSubFolder(folder.ParentId, potentialParentId);
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// 获取所有文件夹
         /// </summary>
         public List<ConnectionFolder> GetAllFolders()

@@ -224,6 +224,13 @@ namespace RDPManager
             treeView.BorderStyle = BorderStyle.None;
             treeView.BackColor = UIHelper.ColorPanelLeft;
             
+            // 启用拖拽
+            treeView.AllowDrop = true;
+            treeView.ItemDrag += TreeView_ItemDrag;
+            treeView.DragEnter += TreeView_DragEnter;
+            treeView.DragOver += TreeView_DragOver;
+            treeView.DragDrop += TreeView_DragDrop;
+
             treeView.DoubleClick += TreeView_DoubleClick;
             treeView.MouseUp += TreeView_MouseUp;
 
@@ -492,6 +499,142 @@ namespace RDPManager
 
         #region 树形视图事件
 
+        // 拖拽相关
+        private void TreeView_ItemDrag(object sender, ItemDragEventArgs e)
+        {
+            DoDragDrop(e.Item, DragDropEffects.Move);
+        }
+
+        private void TreeView_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = DragDropEffects.Move;
+        }
+
+        private void TreeView_DragOver(object sender, DragEventArgs e)
+        {
+            Point targetPoint = treeView.PointToClient(new Point(e.X, e.Y));
+            TreeNode targetNode = treeView.GetNodeAt(targetPoint);
+
+            // 选中目标节点，提供视觉反馈
+            treeView.SelectedNode = targetNode;
+
+            if (targetNode != null)
+            {
+                // 如果目标是文件夹，且不是被拖拽节点本身或其子节点，则允许移动
+                TreeNode draggedNode = (TreeNode)e.Data.GetData(typeof(TreeNode));
+                if (draggedNode != null && draggedNode != targetNode && !ContainsNode(draggedNode, targetNode))
+                {
+                    // 只能拖放到文件夹或根节点（假设根节点Tag为"ROOT"）
+                    if (targetNode.Tag is ConnectionFolder || targetNode.Tag.ToString() == "ROOT")
+                    {
+                        e.Effect = DragDropEffects.Move;
+                    }
+                    else
+                    {
+                        e.Effect = DragDropEffects.None;
+                    }
+                }
+                else
+                {
+                    e.Effect = DragDropEffects.None;
+                }
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void TreeView_DragDrop(object sender, DragEventArgs e)
+        {
+            Point targetPoint = treeView.PointToClient(new Point(e.X, e.Y));
+            TreeNode targetNode = treeView.GetNodeAt(targetPoint);
+            TreeNode draggedNode = (TreeNode)e.Data.GetData(typeof(TreeNode));
+
+            if (targetNode != null && draggedNode != null && targetNode != draggedNode)
+            {
+                // 获取目标文件夹 ID
+                string targetFolderId = string.Empty;
+                if (targetNode.Tag is ConnectionFolder)
+                {
+                    targetFolderId = ((ConnectionFolder)targetNode.Tag).Id;
+                }
+                else if (targetNode.Tag.ToString() == "ROOT")
+                {
+                    targetFolderId = string.Empty; // 根目录
+                }
+                else
+                {
+                    return; // 目标不是文件夹或根节点
+                }
+
+                try
+                {
+                    // 执行移动操作
+                    if (draggedNode.Tag is RdpConnection)
+                    {
+                        RdpConnection conn = (RdpConnection)draggedNode.Tag;
+                        _dataManager.MoveConnectionToFolder(conn.Id, targetFolderId);
+                    }
+                    else if (draggedNode.Tag is ConnectionFolder)
+                    {
+                        ConnectionFolder folder = (ConnectionFolder)draggedNode.Tag;
+                        _dataManager.MoveFolderToFolder(folder.Id, targetFolderId);
+                    }
+
+                    // 刷新列表并展开目标节点
+                    LoadConnections();
+                    
+                    // 尝试恢复展开状态（简化处理：展开目标节点）
+                    // 实际应用中可能需要更复杂的逻辑来恢复所有展开状态
+                    ExpandNodeById(targetFolderId);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(string.Format("移动失败: {0}", ex.Message), "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 检查 targetNode 是否是 parentNode 的子节点
+        /// </summary>
+        private bool ContainsNode(TreeNode parentNode, TreeNode targetNode)
+        {
+            if (parentNode == targetNode) return true;
+            foreach (TreeNode node in parentNode.Nodes)
+            {
+                if (ContainsNode(node, targetNode)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 根据 ID 查找并展开节点（辅助方法）
+        /// </summary>
+        private void ExpandNodeById(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return; // 根节点默认已展开
+
+            foreach (TreeNode node in treeView.Nodes)
+            {
+                ExpandNodeRecursive(node, id);
+            }
+        }
+
+        private void ExpandNodeRecursive(TreeNode parent, string id)
+        {
+            if (parent.Tag is ConnectionFolder && ((ConnectionFolder)parent.Tag).Id == id)
+            {
+                parent.Expand();
+                return;
+            }
+            foreach (TreeNode child in parent.Nodes)
+            {
+                ExpandNodeRecursive(child, id);
+            }
+        }
+
         /// <summary>
         /// 双击连接项 - 打开连接
         /// </summary>
@@ -533,6 +676,7 @@ namespace RDPManager
                     // === 连接节点菜单 ===
                     menu.Items.Add("连接", null, (s, args) => ConnectToRemote((RdpConnection)node.Tag));
                     menu.Items.Add("-");
+                    menu.Items.Add("移动到...", null, (s, args) => MoveNodeToFolder(node));
                     menu.Items.Add("编辑", null, (s, args) => EditConnection((RdpConnection)node.Tag));
                     menu.Items.Add("删除", null, (s, args) => DeleteConnection((RdpConnection)node.Tag));
                 }
@@ -543,6 +687,7 @@ namespace RDPManager
                     menu.Items.Add("在此新建连接", null, (s, args) => AddNewConnectionToFolder(folder.Id));
                     menu.Items.Add("在此新建子文件夹", null, (s, args) => AddNewFolder(folder.Id));
                     menu.Items.Add("-");
+                    menu.Items.Add("移动到...", null, (s, args) => MoveNodeToFolder(node));
                     menu.Items.Add("重命名", null, (s, args) => RenameFolder(folder));
                     menu.Items.Add("删除文件夹", null, (s, args) => DeleteFolder(folder));
                 }
@@ -1219,6 +1364,55 @@ namespace RDPManager
                     {
                         MessageBox.Show(string.Format("添加连接失败: {0}", ex.Message), "错误",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 移动节点到指定文件夹
+        /// </summary>
+        private void MoveNodeToFolder(TreeNode node)
+        {
+            var allFolders = _dataManager.GetAllFolders();
+            string excludeId = null;
+            if (node.Tag is ConnectionFolder)
+            {
+                excludeId = ((ConnectionFolder)node.Tag).Id;
+            }
+
+            using (var dialog = new FolderSelectionForm(allFolders, excludeId))
+            {
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        if (node.Tag is RdpConnection)
+                        {
+                            RdpConnection conn = (RdpConnection)node.Tag;
+                            // 只有当目标文件夹不同时才移动
+                            if (conn.FolderId != dialog.SelectedFolderId)
+                            {
+                                _dataManager.MoveConnectionToFolder(conn.Id, dialog.SelectedFolderId);
+                                LoadConnections();
+                                ExpandNodeById(dialog.SelectedFolderId);
+                            }
+                        }
+                        else if (node.Tag is ConnectionFolder)
+                        {
+                            ConnectionFolder folder = (ConnectionFolder)node.Tag;
+                            // 只有当目标文件夹不同且不是自己时才移动
+                            if (folder.ParentId != dialog.SelectedFolderId && folder.Id != dialog.SelectedFolderId)
+                            {
+                                _dataManager.MoveFolderToFolder(folder.Id, dialog.SelectedFolderId);
+                                LoadConnections();
+                                ExpandNodeById(dialog.SelectedFolderId);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(string.Format("移动失败: {0}", ex.Message), "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }

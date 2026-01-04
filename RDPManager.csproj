@@ -61,6 +61,9 @@
     <Compile Include="EditConnectionForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="FolderSelectionForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="EditConnectionForm.Designer.cs">
       <DependentUpon>EditConnectionForm.cs</DependentUpon>
     </Compile>
