@@ -102,6 +102,12 @@ namespace RDPManager
                 rdpClient.AdvancedSettings9.DisplayConnectionBar = true;
                 rdpClient.AdvancedSettings9.PinConnectionBar = false;
 
+                // 将 Windows 组合键发送到远程计算机
+                if (rdpClient.SecuredSettings2 != null)
+                {
+                    rdpClient.SecuredSettings2.KeyboardHookMode = 1;
+                }
+
                 // 连接事件
                 rdpClient.OnConnected += RdpClient_OnConnected;
                 rdpClient.OnDisconnected += RdpClient_OnDisconnected;

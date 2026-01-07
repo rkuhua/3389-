@@ -51,7 +51,7 @@ namespace RDPManager
         public MainFormNew()
         {
             _dataManager = new DataManager();
-            LoadThemeConfig(); // 加载主题
+            LoadAppConfig(); // 加载配置
             InitializeComponent();
             ApplyModernStyle(); // 应用自定义样式
             LoadConnections();
@@ -98,30 +98,58 @@ namespace RDPManager
                     {
                         UIHelper.SetTheme(newTheme);
                         ApplyModernStyle();
-                        SaveThemeConfig(newTheme);
+                        SaveAppConfig();
                     }
                 }
             }
         }
 
-        private void SaveThemeConfig(string theme)
+        private class AppConfig
+        {
+            public string Theme { get; set; } = "Dark";
+            public bool ShowSidePanel { get; set; } = true;
+        }
+
+        private void SaveAppConfig()
         {
             try
             {
-                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "theme.cfg");
-                System.IO.File.WriteAllText(configPath, theme);
+                var config = new AppConfig
+                {
+                    Theme = UIHelper.CurrentTheme,
+                    ShowSidePanel = leftPanelVisible
+                };
+                
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(config);
+                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.config.json");
+                System.IO.File.WriteAllText(configPath, json);
             }
             catch { /* 忽略保存错误 */ }
         }
 
-        private void LoadThemeConfig()
+        private void LoadAppConfig()
         {
             try
             {
-                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "theme.cfg");
+                // 优先读取新的配置文件
+                string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.config.json");
                 if (System.IO.File.Exists(configPath))
                 {
-                    string theme = System.IO.File.ReadAllText(configPath).Trim();
+                    string json = System.IO.File.ReadAllText(configPath);
+                    var config = Newtonsoft.Json.JsonConvert.DeserializeObject<AppConfig>(json);
+                    if (config != null)
+                    {
+                        UIHelper.SetTheme(config.Theme);
+                        leftPanelVisible = config.ShowSidePanel;
+                        return;
+                    }
+                }
+
+                // 兼容旧的主题配置文件
+                string oldConfigPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "theme.cfg");
+                if (System.IO.File.Exists(oldConfigPath))
+                {
+                    string theme = System.IO.File.ReadAllText(oldConfigPath).Trim();
                     UIHelper.SetTheme(theme);
                 }
             }
@@ -1139,24 +1167,43 @@ namespace RDPManager
 
             btn.DropDownItems.Clear();
 
-            // 获取所有连接
-            var connections = _dataManager.GetAllConnections();
-            if (connections.Count == 0)
+            // 递归构建菜单
+            BuildQuickConnectMenu(btn.DropDownItems, string.Empty);
+
+            if (btn.DropDownItems.Count == 0)
             {
                 var noItem = new ToolStripMenuItem("(没有保存的连接)");
                 noItem.Enabled = false;
                 btn.DropDownItems.Add(noItem);
-                return;
+            }
+        }
+
+        private void BuildQuickConnectMenu(ToolStripItemCollection items, string parentFolderId)
+        {
+            // 1. 添加该文件夹下的子文件夹
+            var folders = _dataManager.GetSubFolders(parentFolderId);
+            foreach (var folder in folders)
+            {
+                var folderItem = new ToolStripMenuItem(folder.Name);
+                // 递归添加子项
+                BuildQuickConnectMenu(folderItem.DropDownItems, folder.Id);
+                
+                // 只有当文件夹不为空时才添加（或者可以总是添加）
+                if (folderItem.DropDownItems.Count > 0)
+                {
+                    items.Add(folderItem);
+                }
             }
 
-            // 添加所有连接到下拉菜单
+            // 2. 添加该文件夹下的连接
+            var connections = _dataManager.GetConnectionsByFolder(parentFolderId);
             foreach (var conn in connections)
             {
                 var item = new ToolStripMenuItem();
                 item.Text = string.Format("{0} ({1})", conn.Name, conn.ServerAddress);
                 item.Tag = conn;
                 item.Click += QuickConnectItem_Click;
-                btn.DropDownItems.Add(item);
+                items.Add(item);
             }
         }
 
@@ -1566,20 +1613,39 @@ namespace RDPManager
         private void BtnTogglePanel_Click(object sender, EventArgs e)
         {
             ToggleLeftPanel();
+            SaveAppConfig(); // 保存状态
         }
 
         private void ToggleLeftPanel()
         {
-            leftPanelVisible = !leftPanelVisible;
-
-            if (leftPanelVisible)
+            // 如果是由按钮触发的，leftPanelVisible 已经在 BtnTogglePanel_Click 中被切换了吗？
+            // 不，ToggleLeftPanel 负责切换逻辑
+            
+            // 注意：当此方法被 ToggleFullScreen 调用时，我们不应该保存配置，
+            // 只有用户主动点击按钮时才保存。但为了简单起见，我们在 BtnTogglePanel_Click 中调用 SaveAppConfig
+            
+            // 如果是由 ToggleFullScreen 调用的，这里的逻辑是反转当前状态
+            // 但 ToggleFullScreen 逻辑中是 "if (leftPanelVisible) ToggleLeftPanel()" 也就是只负责隐藏
+            // 恢复时也是 "if (_previousLeftPanelVisible && !leftPanelVisible) ToggleLeftPanel()"
+            
+            // 所以这里只需要简单反转即可，真正控制保存的是调用者
+            
+            // 修正逻辑：
+            // leftPanelVisible 应该反映当前的期望状态
+            
+            // 这里我们只是执行 UI 更新
+            if (_splitContainer.Panel1Collapsed)
             {
+                // 显示
+                leftPanelVisible = true;
                 _splitContainer.Panel1Collapsed = false;
                 _splitContainer.SplitterDistance = leftPanelWidth;
                 btnTogglePanel.Text = "隐藏列表";
             }
             else
             {
+                // 隐藏
+                leftPanelVisible = false;
                 _splitContainer.Panel1Collapsed = true;
                 btnTogglePanel.Text = "显示列表";
             }
@@ -1666,8 +1732,16 @@ namespace RDPManager
 
         private void MainFormNew_Load(object sender, EventArgs e)
         {
-            // 窗口加载后强制设置左侧面板宽度
-            _splitContainer.SplitterDistance = leftPanelWidth;
+            // 窗口加载后根据配置设置左侧面板状态
+            if (!leftPanelVisible)
+            {
+                _splitContainer.Panel1Collapsed = true;
+                btnTogglePanel.Text = "显示列表";
+            }
+            else
+            {
+                _splitContainer.SplitterDistance = leftPanelWidth;
+            }
 
             // 默认打开一个 CMD 终端标签页
             OpenTerminal("cmd");

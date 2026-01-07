@@ -146,6 +146,11 @@ namespace RDPManager
                 // 提高图像质量
                 rdpClient.AdvancedSettings9.DisableCtrlAltDel = 1;
                 rdpClient.AdvancedSettings9.EnableWindowsKey = 1;
+                // 将 Windows 组合键发送到远程计算机
+                if (rdpClient.SecuredSettings2 != null)
+                {
+                    rdpClient.SecuredSettings2.KeyboardHookMode = 1;
+                }
                 rdpClient.AdvancedSettings9.GrabFocusOnConnect = true;
 
                 // 显示连接栏（全屏时）
@@ -291,6 +296,11 @@ namespace RDPManager
                 rdpClient.AdvancedSettings9.RedirectSmartCards = false;
                 rdpClient.AdvancedSettings9.DisableCtrlAltDel = 1;
                 rdpClient.AdvancedSettings9.EnableWindowsKey = 1;
+                // 将 Windows 组合键发送到远程计算机
+                if (rdpClient.SecuredSettings2 != null)
+                {
+                    rdpClient.SecuredSettings2.KeyboardHookMode = 1;
+                }
                 rdpClient.AdvancedSettings9.GrabFocusOnConnect = true;
                 rdpClient.AdvancedSettings9.DisplayConnectionBar = true;
                 rdpClient.AdvancedSettings9.PinConnectionBar = false;
