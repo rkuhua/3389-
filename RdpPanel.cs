@@ -127,8 +127,9 @@ namespace RDPManager
                 rdpClient.ColorDepth = _connection.ColorDepth;
 
                 // 性能和显示优化
-                rdpClient.AdvancedSettings9.EnableAutoReconnect = true;
-                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 5;
+                // 禁用RDP客户端自带的自动重连，使用自定义重连逻辑
+                rdpClient.AdvancedSettings9.EnableAutoReconnect = false;
+                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 0;
                 rdpClient.AdvancedSettings9.Compress = 1;
                 rdpClient.AdvancedSettings9.BitmapPeristence = 1;
 
@@ -284,8 +285,9 @@ namespace RDPManager
                 rdpClient.ColorDepth = _connection.ColorDepth;
 
                 // 性能设置
-                rdpClient.AdvancedSettings9.EnableAutoReconnect = true;
-                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 5;
+                // 禁用RDP客户端自带的自动重连
+                rdpClient.AdvancedSettings9.EnableAutoReconnect = false;
+                rdpClient.AdvancedSettings9.MaxReconnectAttempts = 0;
                 rdpClient.AdvancedSettings9.Compress = 1;
                 rdpClient.AdvancedSettings9.BitmapPeristence = 1;
                 rdpClient.AdvancedSettings9.SmartSizing = true; // 启用智能缩放
@@ -360,6 +362,36 @@ namespace RDPManager
             // 如果是手动断开或正在调整分辨率，不触发事件
             if (_manualDisconnect)
             {
+                if (Disconnected != null)
+                {
+                    Disconnected(this, discReason);
+                }
+                OnConnectionClosed();
+                return;
+            }
+
+            // 检查是否被其他地方挤掉（discReason 5 = 被其他会话替换）
+            // 扩展断开码也需要检查，高16位包含扩展信息
+            int extendedReason = (discReason >> 16) & 0xFFFF;
+            bool isKickedByOther = (discReason == 5) ||
+                                   (extendedReason == 5) ||
+                                   (discReason == 3); // 3 = 服务器断开（管理员踢出）
+
+            if (isKickedByOther)
+            {
+                // 被挤掉，弹窗提示，不重连
+                OnStatusChanged("连接已被其他会话替换");
+
+                // 使用 BeginInvoke 确保在 UI 线程上显示弹窗
+                this.BeginInvoke(new Action(() =>
+                {
+                    MessageBox.Show(
+                        "您的远程桌面连接已被其他位置登录挤掉。\n\n连接已断开，请重新连接。",
+                        "连接已断开",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }));
+
                 if (Disconnected != null)
                 {
                     Disconnected(this, discReason);
