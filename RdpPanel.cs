@@ -25,6 +25,11 @@ namespace RDPManager
         private bool _isRetrying = false;
         private bool _manualDisconnect = false;
 
+        // 用于延迟显示消息的队列（避免在不安全的时机弹窗导致卡死）
+        private string _pendingMessage = null;
+        private string _pendingTitle = null;
+        private Timer _messageTimer;
+
         public event EventHandler<string> StatusChanged;
         public event EventHandler ConnectionClosed;
         public event EventHandler<int> Disconnected;
@@ -382,15 +387,10 @@ namespace RDPManager
                 // 被挤掉，弹窗提示，不重连
                 OnStatusChanged("连接已被其他会话替换");
 
-                // 使用 BeginInvoke 确保在 UI 线程上显示弹窗
-                this.BeginInvoke(new Action(() =>
-                {
-                    MessageBox.Show(
-                        "您的远程桌面连接已被其他位置登录挤掉。\n\n连接已断开，请重新连接。",
-                        "连接已断开",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                }));
+                // 使用安全的消息显示方法，避免在控件状态不稳定时弹窗导致卡死
+                ShowMessageSafe(
+                    "您的远程桌面连接已被其他位置登录挤掉。\n\n连接已断开，请重新连接。",
+                    "连接已断开");
 
                 if (Disconnected != null)
                 {
@@ -494,8 +494,10 @@ namespace RDPManager
 
         private void RdpClient_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
         {
-            MessageBox.Show(string.Format("发生致命错误\n错误代码: {0}", e.errorCode), "错误",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // 使用安全的消息显示方法，避免在控件状态不稳定时弹窗导致卡死
+            ShowMessageSafe(
+                string.Format("发生致命错误\n错误代码: {0}", e.errorCode),
+                "错误");
             OnConnectionClosed();
         }
 
@@ -515,10 +517,121 @@ namespace RDPManager
             }
         }
 
+        /// <summary>
+        /// 安全地显示消息（延迟显示，避免在不安全的时机弹窗导致卡死）
+        /// 当远程桌面进入锁屏/密码界面时，RDP控件状态可能不稳定，
+        /// 直接弹窗会导致UI线程卡死
+        /// </summary>
+        private void ShowMessageSafe(string message, string title, MessageBoxIcon icon = MessageBoxIcon.Information)
+        {
+            // 如果控件已释放，直接返回
+            if (this.IsDisposed || !this.IsHandleCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                // 存储消息，使用定时器延迟显示
+                _pendingMessage = message;
+                _pendingTitle = title;
+
+                // 停止之前的消息定时器
+                if (_messageTimer != null)
+                {
+                    _messageTimer.Stop();
+                    _messageTimer.Dispose();
+                }
+
+                // 创建新的定时器，延迟100ms显示消息
+                // 这样可以让RDP控件的断开事件完全处理完毕
+                _messageTimer = new Timer();
+                _messageTimer.Interval = 100;
+                _messageTimer.Tick += MessageTimer_Tick;
+                _messageTimer.Start();
+            }
+            catch
+            {
+                // 忽略异常，避免因为弹窗导致程序崩溃
+            }
+        }
+
+        /// <summary>
+        /// 消息定时器回调 - 安全地显示待处理的消息
+        /// </summary>
+        private void MessageTimer_Tick(object sender, EventArgs e)
+        {
+            // 停止定时器
+            if (_messageTimer != null)
+            {
+                _messageTimer.Stop();
+                _messageTimer.Dispose();
+                _messageTimer = null;
+            }
+
+            // 检查控件状态
+            if (this.IsDisposed || !this.IsHandleCreated)
+            {
+                return;
+            }
+
+            // 获取并清空待显示的消息
+            string message = _pendingMessage;
+            string title = _pendingTitle;
+            _pendingMessage = null;
+            _pendingTitle = null;
+
+            if (string.IsNullOrEmpty(message))
+            {
+                return;
+            }
+
+            try
+            {
+                // 获取顶层窗体作为弹窗的父窗口
+                Form parentForm = this.FindForm();
+                if (parentForm != null && !parentForm.IsDisposed && parentForm.IsHandleCreated)
+                {
+                    // 使用 BeginInvoke 确保在 UI 线程上显示，并且是非阻塞的
+                    if (!parentForm.IsDisposed && parentForm.IsHandleCreated)
+                    {
+                        parentForm.BeginInvoke(new Action(() =>
+                        {
+                            try
+                            {
+                                // 再次检查窗体状态
+                                if (!parentForm.IsDisposed)
+                                {
+                                    MessageBox.Show(parentForm, message, title,
+                                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                }
+                            }
+                            catch
+                            {
+                                // 忽略弹窗时的任何异常
+                            }
+                        }));
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略异常
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                // 清理消息定时器
+                if (_messageTimer != null)
+                {
+                    _messageTimer.Stop();
+                    _messageTimer.Dispose();
+                    _messageTimer = null;
+                }
+
                 Disconnect();
                 if (rdpClient != null)
                 {

@@ -8,7 +8,7 @@ echo ========================================
 echo.
 
 echo [1/4] Building...
-"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" "RDPManager.csproj" /p:Configuration=Release /p:Platform=x86 /t:Rebuild /v:minimal
+dotnet msbuild "RDPManager.csproj" /p:Configuration=Release /p:Platform=x86 /t:Rebuild /v:minimal
 if errorlevel 1 (
     echo Build failed!
     pause
