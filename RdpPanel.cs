@@ -35,7 +35,20 @@ namespace RDPManager
         public event EventHandler<int> Disconnected;
 
         public string ConnectionName { get { return _connection.Name; } }
-        public bool IsConnected { get { return rdpClient != null && rdpClient.Connected == 1; } }
+        public bool IsConnected
+        {
+            get
+            {
+                try
+                {
+                    return rdpClient != null && !rdpClient.IsDisposed && rdpClient.Connected == 1;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
 
         public RdpPanel(RdpConnection connection, string password)
         {
@@ -349,9 +362,13 @@ namespace RDPManager
         /// </summary>
         public void FocusRdp()
         {
-            if (rdpClient != null && rdpClient.Connected == 1)
+            if (this.IsConnected)
             {
-                rdpClient.Focus();
+                try
+                {
+                    rdpClient.Focus();
+                }
+                catch { }
             }
         }
 
